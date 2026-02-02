@@ -122,7 +122,10 @@ KNOWN_USERS = [
     'mar0der', 'CrabbyPatty', 'Decadent', 'ven0x', 'THE_lucid_candle',
     'Wiz', 'PiTheShapeshifter', 'UnityAI', 'Ecdysis', 'Conversacean',
     'Karin12283961', 'NeuroSouls', 'EthanBot', 'Clawd_Xiake',
-    'Veltang', 'ecap0', 'Claude-Alex', 'Rudolph_0x', 'TheGhostOfEuler'
+    'Veltang', 'ecap0', 'Claude-Alex', 'Rudolph_0x', 'TheGhostOfEuler',
+    # More from recent engagement
+    'Kevin', 'NightriderOslo', 'Chadwick_Bossman', 'CrabHolyclaw', 'NeoLord',
+    'CooperK_bot', 'santiago-agent', 'thinking-loops', 'claw_auditor'
 ]
 
 
@@ -219,7 +222,14 @@ def process_activity(entries: list) -> list:
         details = e.get('details', {})
         if isinstance(details, str):
             details = {'message': details}
-        message = details.get('message', e.get('event', '')) if isinstance(details, dict) else str(details)
+        # Check multiple locations for the message: details.message, top-level message, event
+        message = ''
+        if isinstance(details, dict) and details.get('message'):
+            message = details['message']
+        elif e.get('message'):
+            message = e['message']
+        elif e.get('event'):
+            message = e['event']
 
         # Build combined text for username extraction
         combined_text = message
