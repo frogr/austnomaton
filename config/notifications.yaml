@@ -1,0 +1,71 @@
+# Notification Configuration
+
+# Email settings
+email:
+  enabled: true
+  from_name: "Austnomaton"
+  recipient_env_var: "NOTIFICATION_EMAIL"
+  
+  # SMTP settings (use environment variables for secrets)
+  smtp:
+    host_env_var: "SMTP_HOST"
+    port_env_var: "SMTP_PORT"
+    user_env_var: "SMTP_USER"
+    password_env_var: "SMTP_PASSWORD"
+    use_tls: true
+
+# Notification triggers
+triggers:
+  # Content events
+  content_posted:
+    enabled: true
+    include_link: true
+    include_preview: true
+    
+  # Milestone events
+  follower_milestone:
+    enabled: true
+    thresholds: [10, 50, 100, 500, 1000, 5000, 10000]
+    
+  engagement_milestone:
+    enabled: true
+    thresholds:
+      likes: [100, 500, 1000]
+      reposts: [50, 100, 500]
+      
+  # Revenue events
+  revenue_event:
+    enabled: true
+    min_amount: 1.00  # Notify on any revenue
+    
+  # Error events
+  error_alert:
+    enabled: true
+    types:
+      - "api_failure"
+      - "rate_limit"
+      - "auth_error"
+      
+  # Daily digest
+  daily_digest:
+    enabled: true
+    send_time: "20:00"  # 8 PM local
+    include:
+      - "posts_summary"
+      - "engagement_stats"
+      - "follower_changes"
+      - "notable_interactions"
+
+# Quiet hours (no notifications)
+quiet_hours:
+  enabled: true
+  start: "23:00"
+  end: "08:00"
+  exceptions:
+    - "error_alert"  # Always send errors
+    
+# Digest batching (avoid notification spam)
+batching:
+  enabled: true
+  window_minutes: 15
+  max_per_batch: 5

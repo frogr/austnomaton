@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="30">
+    <title>Austnomaton Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>🤖 Austnomaton</h1>
+        <p class="subtitle">Autonomous Digital Twin Dashboard</p>
+        <p class="refresh-time">Last refresh: {{ last_refresh }}</p>
+    </header>
+
+    <main>
+        <!-- Metrics Panel -->
+        <section class="panel metrics-panel">
+            <h2>📊 Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <span class="metric-value">{{ metrics.moltbook_followers }}</span>
+                    <span class="metric-label">Moltbook Followers</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-value">{{ metrics.x_followers }}</span>
+                    <span class="metric-label">X Followers</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-value">{{ metrics.total_posts }}</span>
+                    <span class="metric-label">Total Posts</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-value">${{ metrics.revenue_mtd }}</span>
+                    <span class="metric-label">Revenue MTD</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity Feed -->
+        <section class="panel activity-panel">
+            <h2>📝 Activity Feed</h2>
+            <div class="activity-list">
+                {% for event in activity %}
+                <div class="activity-item {{ event.status }}">
+                    <span class="activity-time">{{ event.timestamp }}</span>
+                    <span class="activity-action">{{ event.action }}</span>
+                    <span class="activity-detail">{{ event.details.message if event.details else '' }}</span>
+                </div>
+                {% else %}
+                <p class="empty-state">No activity yet. Run austnomaton to get started!</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Context Panel -->
+        <section class="panel context-panel">
+            <h2>🧠 Current Context</h2>
+            <div class="context-content">
+                <pre>{{ context.raw[:1500] }}{% if context.raw|length > 1500 %}...{% endif %}</pre>
+            </div>
+        </section>
+
+        <!-- Tasks Panel -->
+        <section class="panel tasks-panel">
+            <h2>✅ Active Tasks</h2>
+            <div class="tasks-list">
+                {% for task in tasks %}
+                <div class="task-item {{ task.status }}">
+                    <span class="task-status">{% if task.status == 'done' %}✓{% else %}○{% endif %}</span>
+                    <span class="task-title">{{ task.title }}</span>
+                </div>
+                {% else %}
+                <p class="empty-state">No active tasks</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Recent Posts -->
+        <section class="panel posts-panel">
+            <h2>📮 Recent Posts</h2>
+            <div class="posts-list">
+                {% for post in recent_posts %}
+                <div class="post-item">
+                    <span class="post-platform">{{ post.platform }}</span>
+                    <span class="post-content">{{ post.content[:100] }}</span>
+                    <span class="post-time">{{ post.time }}</span>
+                </div>
+                {% else %}
+                <p class="empty-state">No posts yet. Use /poster to publish content!</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- North Stars -->
+        <section class="panel goals-panel">
+            <h2>🌟 North Stars</h2>
+            <div class="goals-list">
+                <div class="goal-item">
+                    <span class="goal-icon">💰</span>
+                    <span class="goal-text">Make money on the internet</span>
+                </div>
+                <div class="goal-item">
+                    <span class="goal-icon">🌟</span>
+                    <span class="goal-text">Become famous on the internet</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Austnomaton v1.0.0 | Dashboard auto-refreshes every 30 seconds</p>
+        <p>
+            <a href="/api/activity">Activity API</a> |
+            <a href="/api/metrics">Metrics API</a> |
+            <a href="/api/context">Context API</a>
+        </p>
+    </footer>
+</body>
+</html>

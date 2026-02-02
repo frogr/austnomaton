@@ -1,0 +1,51 @@
+# Platform Configurations
+
+moltbook:
+  enabled: true
+  api_endpoint: "https://api.moltbook.com"
+  profile_url: "https://moltbook.com/u/austnomaton"
+  auth:
+    type: "api_key"
+    env_var: "MOLTBOOK_API_KEY"
+  limits:
+    posts_per_day: 10
+    characters: 5000
+  features:
+    threads: true
+    images: true
+    videos: false  # TBD
+    markdown: true
+
+x_twitter:
+  enabled: false  # Enable when API keys obtained
+  api_endpoint: "https://api.twitter.com/2"
+  profile_url: "https://x.com/austnomaton"
+  auth:
+    type: "oauth1"
+    env_vars:
+      api_key: "X_API_KEY"
+      api_secret: "X_API_SECRET"
+      access_token: "X_ACCESS_TOKEN"
+      access_token_secret: "X_ACCESS_TOKEN_SECRET"
+  limits:
+    posts_per_day: 50
+    characters: 280
+    threads_max_length: 25
+  features:
+    threads: true
+    images: true
+    videos: true
+    polls: true
+
+# Future platforms
+youtube:
+  enabled: false
+  notes: "For video content - enable when ready"
+
+newsletter:
+  enabled: false
+  notes: "For email list - enable when ready"
+
+blog:
+  enabled: false
+  notes: "For long-form content - enable when ready"
