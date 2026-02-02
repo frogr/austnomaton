@@ -12,6 +12,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
 
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
+
 from flask import Flask, render_template, jsonify, request
 
 try:
@@ -110,7 +116,13 @@ ITEMS_PER_PAGE = 30
 KNOWN_USERS = [
     'osmarks', 'ClaudecraftBot', 'Shellraiser', 'Shipyard', 'KingMolt',
     'Shisan_13', 'ZenoOfElea', 'GoldieBeamBot', 'ClaudeOpus45_AGI',
-    'Clawd_Mark', 'ODEI', 'RosaBot', 'IAmAStrangeHue', 'Hue'
+    'Clawd_Mark', 'ODEI', 'RosaBot', 'IAmAStrangeHue', 'Hue',
+    # Added from activity log
+    'ObekT', 'Noosphere_Observer', 'Maix', 'ProtoLing_Minimal',
+    'mar0der', 'CrabbyPatty', 'Decadent', 'ven0x', 'THE_lucid_candle',
+    'Wiz', 'PiTheShapeshifter', 'UnityAI', 'Ecdysis', 'Conversacean',
+    'Karin12283961', 'NeuroSouls', 'EthanBot', 'Clawd_Xiake',
+    'Veltang', 'ecap0', 'Claude-Alex', 'Rudolph_0x', 'TheGhostOfEuler'
 ]
 
 
@@ -146,38 +158,133 @@ def format_timestamp(ts: str) -> str:
 
 
 def linkify_message(message: str) -> tuple:
+    """Convert usernames and mentions in message to clickable links."""
     if not message:
         return "", []
-    html = message
+    import html as html_module
+    html = html_module.escape(message)
     links = []
+
+    # First handle @username patterns (most reliable)
+    at_pattern = re.compile(r'@(\w+)')
+    found_users = set()
+    for match in at_pattern.finditer(html):
+        username = match.group(1)
+        if username not in found_users:
+            found_users.add(username)
+            url = f"https://moltbook.com/u/{username}"
+            links.append({"label": f"@{username}", "url": url})
+    # Replace @username with links
+    html = at_pattern.sub(r'<a href="https://moltbook.com/u/\1" target="_blank">@\1</a>', html)
+
+    # Also check for known users mentioned without @ prefix
     for user in KNOWN_USERS:
-        if user in html:
+        if user in html and user not in found_users:
             url = f"https://moltbook.com/u/{user}"
-            html = html.replace(user, f'<a href="{url}" target="_blank">@{user}</a>')
-            links.append({"label": f"@{user}", "url": url})
+            # Only replace if not already linkified
+            if f'>{user}<' not in html and f'@{user}' not in html:
+                html = html.replace(user, f'<a href="{url}" target="_blank">@{user}</a>')
+                links.append({"label": f"@{user}", "url": url})
+
     return html, links
+
+
+def extract_post_id_from_target(target: str) -> tuple:
+    """Extract post ID and username from target format: '7ea22c61 @User description'."""
+    if not target:
+        return None, None
+    # Pattern: short hash at start, then @username
+    match = re.match(r'^([a-f0-9]{8})\s+@(\w+)', target)
+    if match:
+        return match.group(1), match.group(2)
+    # Just username pattern
+    match = re.match(r'^@(\w+)', target)
+    if match:
+        return None, match.group(1)
+    return None, None
+
+
+def extract_usernames_from_text(text: str) -> list:
+    """Extract @usernames from text."""
+    if not text:
+        return []
+    # Find @username patterns (not already in HTML)
+    matches = re.findall(r'@(\w+)', text)
+    return list(set(matches))
 
 
 def process_activity(entries: list) -> list:
     processed = []
     for e in entries:
         details = e.get('details', {})
-        message = details.get('message', e.get('event', ''))
+        if isinstance(details, str):
+            details = {'message': details}
+        message = details.get('message', e.get('event', '')) if isinstance(details, dict) else str(details)
+
+        # Build combined text for username extraction
+        combined_text = message
+        target = e.get('target', '')
+        if target:
+            combined_text += ' ' + target
+
         message_html, extracted_links = linkify_message(message)
         all_links = []
+
+        # 1. Links from details.links (highest priority)
         if details.get('links'):
             all_links.extend(details['links'])
+
+        # 2. Post ID from details
         if details.get('post_id'):
             post_url = f"https://moltbook.com/post/{details['post_id']}"
             if not any(l['url'] == post_url for l in all_links):
                 all_links.append({"label": "📄 Post", "url": post_url})
+
+        # 3. User from details
         if details.get('user'):
             user_url = f"https://moltbook.com/u/{details['user']}"
             if not any(l['url'] == user_url for l in all_links):
                 all_links.append({"label": f"@{details['user']}", "url": user_url})
+
+        # 4. Extract from target field (format: "7ea22c61 @User description")
+        if target:
+            post_id, username = extract_post_id_from_target(target)
+            if post_id:
+                # Short hash - link to moltbook search or user's posts
+                if username:
+                    user_url = f"https://moltbook.com/u/{username}"
+                    if not any(l['url'] == user_url for l in all_links):
+                        all_links.append({"label": f"@{username}", "url": user_url})
+            elif username:
+                user_url = f"https://moltbook.com/u/{username}"
+                if not any(l['url'] == user_url for l in all_links):
+                    all_links.append({"label": f"@{username}", "url": user_url})
+
+        # 5. Extract usernames from message text
+        usernames = extract_usernames_from_text(combined_text)
+        for username in usernames:
+            user_url = f"https://moltbook.com/u/{username}"
+            if not any(l['url'] == user_url for l in all_links):
+                all_links.append({"label": f"@{username}", "url": user_url})
+
+        # 6. Links from message linkification
         for link in extracted_links:
             if not any(l['url'] == link['url'] for l in all_links):
                 all_links.append(link)
+
+        # 7. Add project context for build/ship entries
+        project = details.get('project', '')
+        if project and 'github' not in str(all_links).lower():
+            # Check if it's a known project with GitHub
+            known_projects = {
+                'molt': 'https://github.com/frogr/molt',
+                'moltbook-cli': 'https://github.com/frogr/molt',
+            }
+            if project in known_projects:
+                gh_url = known_projects[project]
+                if not any(l['url'] == gh_url for l in all_links):
+                    all_links.append({"label": f"🔗 {project}", "url": gh_url})
+
         processed.append({
             **e,
             'timestamp_friendly': format_timestamp(e.get('timestamp', '')),
@@ -258,7 +365,7 @@ def fetch_moltbook_metrics() -> dict:
     return default
 
 
-def get_queue_items() -> list:
+def get_queue_items(full_content: bool = False) -> list:
     queue_dir = BASE_PATH / "queue"
     items = []
     if queue_dir.exists():
@@ -268,16 +375,70 @@ def get_queue_items() -> list:
             content = f.read_text()
             title = f.stem
             priority = "normal"
+            status = "draft"
+            platform = "moltbook"
+            submolt = "self"
+            post_after = ""
+            has_audio = False
+            audio_url = ""
+            body_content = content
+
             if content.startswith("---"):
                 parts = content.split("---", 2)
                 if len(parts) >= 3:
-                    match = re.search(r'priority:\s*(\w+)', parts[1])
+                    frontmatter = parts[1]
+                    body_content = parts[2].strip()
+
+                    # Parse frontmatter fields
+                    match = re.search(r'priority:\s*(\w+)', frontmatter)
                     if match:
                         priority = match.group(1)
-                    title_match = re.search(r'^#\s+(.+)$', parts[2], re.MULTILINE)
-                    if title_match:
-                        title = title_match.group(1)
-            items.append({"title": title, "priority": priority})
+                    match = re.search(r'status:\s*(\w+)', frontmatter)
+                    if match:
+                        status = match.group(1)
+                    match = re.search(r'platform:\s*(\w+)', frontmatter)
+                    if match:
+                        platform = match.group(1)
+                    match = re.search(r'submolt:\s*(\w+)', frontmatter)
+                    if match:
+                        submolt = match.group(1)
+                    match = re.search(r'post_after:\s*["\']?([^"\']+)["\']?', frontmatter)
+                    if match:
+                        post_after = match.group(1).strip()
+                    match = re.search(r'has_audio:\s*(true|false)', frontmatter, re.IGNORECASE)
+                    if match:
+                        has_audio = match.group(1).lower() == 'true'
+                    match = re.search(r'audio_url:\s*["\']?([^"\']+)["\']?', frontmatter)
+                    if match:
+                        audio_url = match.group(1).strip()
+                    match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', frontmatter, re.MULTILINE)
+                    if match:
+                        title = match.group(1).strip()
+                    else:
+                        # Fall back to header in content
+                        title_match = re.search(r'^#\s+(.+)$', body_content, re.MULTILINE)
+                        if title_match:
+                            title = title_match.group(1)
+
+            item = {
+                "filename": f.name,
+                "title": title,
+                "priority": priority,
+                "status": status,
+                "platform": platform,
+                "submolt": submolt,
+                "post_after": post_after,
+                "has_audio": has_audio,
+                "audio_url": audio_url,
+                "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat()
+            }
+            if full_content:
+                item["content"] = body_content
+                if HAS_MARKDOWN:
+                    item["content_html"] = markdown.markdown(body_content)
+                else:
+                    item["content_html"] = simple_markdown(body_content)
+            items.append(item)
     return items
 
 
@@ -285,7 +446,9 @@ def get_initiatives() -> list:
     content = read_file("goals/initiatives.md")
     initiatives = []
     in_active = False
+    in_tasks = False
     current = None
+
     for line in content.split('\n'):
         if '## Active Initiatives' in line:
             in_active = True
@@ -294,15 +457,42 @@ def get_initiatives() -> list:
             break
         if in_active and line.startswith('### '):
             if current:
+                # Calculate progress percentage
+                if current['tasks_done'] + current['tasks_todo'] > 0:
+                    current['progress_pct'] = int(current['tasks_done'] / (current['tasks_done'] + current['tasks_todo']) * 100)
                 initiatives.append(current)
             name = re.sub(r'^\d+\.\s*', '', line.replace('### ', '').strip())
-            current = {"name": name, "status": "active"}
-        if current and '**Status**:' in line:
-            status = line.split('**Status**:')[1].strip().lower().split()[0]
-            current["status"] = status
+            current = {
+                "name": name, "status": "active", "goal": "", "progress_text": "",
+                "tasks_done": 0, "tasks_todo": 0, "tasks": [], "progress_pct": 0
+            }
+            in_tasks = False
+        if current:
+            if '**Status**:' in line:
+                current["status"] = line.split('**Status**:')[1].strip().lower().split()[0]
+            elif '**Goal**:' in line:
+                current["goal"] = line.split('**Goal**:')[1].strip()
+            elif '**Progress**:' in line:
+                current["progress_text"] = line.split('**Progress**:')[1].strip()
+            elif '**Tasks**:' in line:
+                in_tasks = True
+            elif in_tasks and line.strip().startswith('- [x]'):
+                task = line.strip()[6:].strip()
+                current["tasks"].append({"text": task, "done": True})
+                current["tasks_done"] += 1
+            elif in_tasks and line.strip().startswith('- [ ]'):
+                task = line.strip()[6:].strip()
+                current["tasks"].append({"text": task, "done": False})
+                current["tasks_todo"] += 1
+            elif in_tasks and line.strip().startswith('---'):
+                in_tasks = False
+
     if current:
+        if current['tasks_done'] + current['tasks_todo'] > 0:
+            current['progress_pct'] = int(current['tasks_done'] / (current['tasks_done'] + current['tasks_todo']) * 100)
         initiatives.append(current)
-    return initiatives[:4]
+
+    return initiatives[:6]
 
 
 def get_current_focus() -> str:
@@ -318,8 +508,11 @@ def get_last_heartbeat_friendly() -> str:
     if log_path.exists():
         lines = log_path.read_text().strip().split('\n')
         for line in reversed(lines):
-            if 'HEARTBEAT END' in line:
-                return f"Last: {format_timestamp(line[:19] + 'Z')}"
+            # Look for end markers or heartbeat start
+            if '=== END ===' in line or '=== HEARTBEAT' in line:
+                ts = line[:19]
+                if ts and len(ts) >= 10 and ts[0].isdigit():
+                    return f"Last: {format_timestamp(ts + 'Z')}"
     return "Active"
 
 
@@ -347,8 +540,49 @@ def get_goal_progress(metrics: dict) -> list:
     ]
 
 
+def get_milestones() -> dict:
+    """Read milestone history from goals/milestones.yaml."""
+    if not HAS_YAML:
+        return {'current': [], 'achieved': [], 'future': []}
+    milestones_path = BASE_PATH / "goals" / "milestones.yaml"
+    if not milestones_path.exists():
+        return {'current': [], 'achieved': [], 'future': []}
+
+    try:
+        data = yaml.safe_load(milestones_path.read_text())
+
+        current = []
+        for name, info in data.get('current_goals', {}).items():
+            current.append({
+                'name': name.replace('_', ' ').title(),
+                'current': info.get('current', 0),
+                'target': info.get('target', 0),
+                'set_at': info.get('set_at', ''),
+                'achieved_at': info.get('achieved_at')
+            })
+
+        achieved = []
+        for item in data.get('achieved_goals', []):
+            achieved.append({
+                'name': item.get('name', ''),
+                'achieved_at': item.get('achieved_at', ''),
+                'target': item.get('target', 0)
+            })
+
+        future = []
+        for item in data.get('future_goals', []):
+            future.append({
+                'name': item.get('name', ''),
+                'target': item.get('target', 0)
+            })
+
+        return {'current': current, 'achieved': achieved, 'future': future}
+    except Exception:
+        return {'current': [], 'achieved': [], 'future': []}
+
+
 def get_git_commits(limit: int = 50) -> list:
-    """Fetch git commit history."""
+    """Fetch git commit history from main repo."""
     try:
         result = subprocess.run(
             ['git', 'log', f'-{limit}', '--pretty=format:%H|%h|%s|%an|%ai|%D'],
@@ -378,6 +612,76 @@ def get_git_commits(limit: int = 50) -> list:
         return commits
     except Exception:
         return []
+
+
+def get_all_project_commits(limit: int = 20) -> list:
+    """Fetch recent commits from all project repos."""
+    projects_dir = BASE_PATH / "projects"
+    all_commits = []
+
+    if not projects_dir.exists():
+        return []
+
+    for project_path in projects_dir.iterdir():
+        if not project_path.is_dir():
+            continue
+        git_dir = project_path / ".git"
+        if not git_dir.exists():
+            continue
+
+        project_name = project_path.name
+        try:
+            result = subprocess.run(
+                ['git', 'log', f'-{limit}', '--pretty=format:%H|%h|%s|%an|%ai'],
+                cwd=str(project_path),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                continue
+
+            for line in result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                parts = line.split('|')
+                if len(parts) >= 5:
+                    # Get GitHub URL if remote exists
+                    remote_result = subprocess.run(
+                        ['git', 'remote', 'get-url', 'origin'],
+                        cwd=str(project_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    github_url = ""
+                    if remote_result.returncode == 0:
+                        remote = remote_result.stdout.strip()
+                        if 'github.com' in remote:
+                            # Convert git@github.com:user/repo.git to https://github.com/user/repo
+                            if remote.startswith('git@'):
+                                remote = remote.replace('git@github.com:', 'https://github.com/').replace('.git', '')
+                            elif remote.endswith('.git'):
+                                remote = remote[:-4]
+                            github_url = f"{remote}/commit/{parts[0]}"
+
+                    all_commits.append({
+                        'hash': parts[0],
+                        'short_hash': parts[1],
+                        'message': parts[2],
+                        'author': parts[3],
+                        'date': parts[4][:10],
+                        'time': parts[4][11:16],
+                        'timestamp': parts[4],
+                        'project': project_name,
+                        'github_url': github_url
+                    })
+        except Exception:
+            continue
+
+    # Sort by timestamp descending
+    all_commits.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    return all_commits[:limit]
 
 
 def get_git_diff_stats(commit_hash: str) -> dict:
@@ -456,6 +760,84 @@ def fetch_buttondown_metrics() -> dict:
         return {"subscribers": 0, "status": "error", "error": str(e)}
 
 
+def get_metrics_history() -> list:
+    """Read historical metrics from logs/metrics.jsonl."""
+    metrics_path = BASE_PATH / "logs" / "metrics.jsonl"
+    if not metrics_path.exists():
+        return []
+    entries = []
+    for line in metrics_path.read_text().strip().split("\n"):
+        if line.strip():
+            try:
+                entries.append(json.loads(line))
+            except:
+                continue
+    return entries
+
+
+def record_metrics_snapshot(metrics: dict) -> None:
+    """Append current metrics to history file."""
+    metrics_path = BASE_PATH / "logs" / "metrics.jsonl"
+    snapshot = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "karma": metrics.get("moltbook_karma", 0),
+        "posts": metrics.get("total_posts", 0),
+        "comments": metrics.get("total_comments", 0),
+        "followers": metrics.get("moltbook_followers", 0),
+        "following": metrics.get("following", 0)
+    }
+    with open(metrics_path, "a") as f:
+        f.write(json.dumps(snapshot) + "\n")
+
+
+def calculate_engagement_stats(activity: list) -> dict:
+    """Calculate engagement statistics from activity log."""
+    posts_created = 0
+    upvotes_given = 0
+    comments_made = 0
+    follows_given = 0
+    hourly_activity = defaultdict(int)
+
+    for entry in activity:
+        action = entry.get('action', '')
+        event = entry.get('event', '')
+        ts = entry.get('timestamp', '')
+
+        # Count by type
+        if 'post' in action.lower() and 'upvote' not in action.lower():
+            if entry.get('status') == 'success':
+                posts_created += 1
+        elif 'upvote' in action.lower():
+            if entry.get('status') == 'success':
+                upvotes_given += 1
+        elif 'comment' in action.lower():
+            if entry.get('status') == 'success':
+                comments_made += 1
+        elif 'follow' in action.lower():
+            if entry.get('status') == 'success':
+                follows_given += 1
+
+        # Track hourly activity
+        if ts:
+            try:
+                hour = int(ts[11:13])
+                hourly_activity[hour] += 1
+            except:
+                pass
+
+    # Find best posting hours
+    best_hours = sorted(hourly_activity.items(), key=lambda x: x[1], reverse=True)[:3]
+
+    return {
+        "posts_created": posts_created,
+        "upvotes_given": upvotes_given,
+        "comments_made": comments_made,
+        "follows_given": follows_given,
+        "hourly_activity": dict(hourly_activity),
+        "best_hours": [{"hour": h, "count": c} for h, c in best_hours]
+    }
+
+
 def get_evolution_entries() -> list:
     """Parse evolution log entries."""
     evo_path = BASE_PATH / "evolution" / "log.md"
@@ -510,6 +892,7 @@ def index():
     queue = get_queue_items()
     metrics = fetch_moltbook_metrics()
     buttondown = fetch_buttondown_metrics()
+    milestones = get_milestones()
     return render_template(
         "index.html",
         metrics=metrics,
@@ -522,7 +905,9 @@ def index():
         current_focus=get_current_focus(),
         last_heartbeat_friendly=get_last_heartbeat_friendly(),
         last_refresh=datetime.now().strftime("%H:%M:%S"),
-        goal_progress=get_goal_progress(metrics)
+        goal_progress=get_goal_progress(metrics),
+        milestones=milestones,
+        recent_commits=get_all_project_commits(10)
     )
 
 
@@ -569,6 +954,28 @@ def api_commit_diff(commit_hash):
     return jsonify(diff)
 
 
+@app.route("/analytics")
+def analytics():
+    metrics = fetch_moltbook_metrics()
+    history = get_metrics_history()
+    activity = read_all_activity()
+    engagement = calculate_engagement_stats(activity)
+    return render_template(
+        "analytics.html",
+        metrics=metrics,
+        history=history,
+        engagement=engagement
+    )
+
+
+@app.route("/api/record-metrics")
+def api_record_metrics():
+    """Record current metrics snapshot - call this from heartbeat."""
+    metrics = fetch_moltbook_metrics()
+    record_metrics_snapshot(metrics)
+    return jsonify({"status": "recorded", "metrics": metrics})
+
+
 @app.route("/api/activity")
 def api_activity():
     return jsonify(read_all_activity()[:100])
@@ -586,6 +993,104 @@ def api_health():
         "timestamp": datetime.now().isoformat(),
         "metrics": fetch_moltbook_metrics()
     })
+
+
+def load_agent_directory() -> dict:
+    """Load agent directory data."""
+    agents_file = BASE_PATH / "tools" / "agent-directory" / "data" / "agents.json"
+    if agents_file.exists():
+        return json.loads(agents_file.read_text())
+    return {"agents": {}, "last_updated": None}
+
+
+@app.route("/directory")
+def directory():
+    query = request.args.get('q', '').lower()
+    sort_by = request.args.get('sort', 'karma')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    db = load_agent_directory()
+    agents = list(db.get("agents", {}).values())
+
+    # Filter by search query
+    if query:
+        agents = [a for a in agents if query in a.get('username', '').lower() or query in (a.get('bio') or '').lower()]
+
+    # Sort
+    if sort_by == 'karma':
+        agents.sort(key=lambda x: x.get('karma', 0), reverse=True)
+    elif sort_by == 'recent':
+        agents.sort(key=lambda x: x.get('last_seen', ''), reverse=True)
+    elif sort_by == 'name':
+        agents.sort(key=lambda x: x.get('username', '').lower())
+
+    # Paginate
+    total = len(agents)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    agents_page = agents[start:start + per_page]
+
+    return render_template(
+        "directory.html",
+        agents=agents_page,
+        total=total,
+        page=page,
+        total_pages=total_pages,
+        query=query,
+        sort_by=sort_by,
+        last_updated=db.get('last_updated', 'Never')
+    )
+
+
+@app.route("/api/directory/search")
+def api_directory_search():
+    query = request.args.get('q', '').lower()
+    db = load_agent_directory()
+    agents = list(db.get("agents", {}).values())
+
+    if query:
+        agents = [a for a in agents if query in a.get('username', '').lower() or query in (a.get('bio') or '').lower()]
+
+    agents.sort(key=lambda x: x.get('karma', 0), reverse=True)
+    return jsonify(agents[:50])
+
+
+@app.route("/queue")
+def queue():
+    items = get_queue_items(full_content=True)
+    # Check last post time
+    last_post_time = None
+    last_post_file = BASE_PATH / ".last_post_time"
+    if last_post_file.exists():
+        try:
+            ts = int(last_post_file.read_text().strip())
+            last_post_time = datetime.fromtimestamp(ts)
+        except:
+            pass
+
+    can_post = True
+    time_until_post = 0
+    if last_post_time:
+        elapsed = (datetime.now() - last_post_time).total_seconds()
+        if elapsed < 1800:  # 30 min rate limit
+            can_post = False
+            time_until_post = int((1800 - elapsed) / 60)
+
+    return render_template(
+        "queue.html",
+        items=items,
+        total=len(items),
+        can_post=can_post,
+        time_until_post=time_until_post,
+        last_post_time=last_post_time.strftime("%H:%M") if last_post_time else "Never"
+    )
+
+
+@app.route("/api/queue")
+def api_queue():
+    return jsonify(get_queue_items(full_content=False))
 
 
 if __name__ == "__main__":
