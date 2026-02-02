@@ -323,10 +323,26 @@ def process_activity(entries: list) -> list:
             message = e['event']
 
         # Build combined text for username extraction
-        combined_text = message
         target = e.get('target', '')
+        combined_text = message
         if target:
             combined_text += ' ' + target
+
+        # If no message, synthesize one from action + target
+        if not message and target:
+            action = e.get('action', '').replace('_', ' ')
+            # Clean up common patterns in target
+            if target.startswith('@'):
+                message = f"{action.capitalize()} {target}"
+            elif '@' in target:
+                # Format like "7ea22c61 @User title" or "@User, @Other title"
+                message = f"{action.capitalize()}: {target}"
+            else:
+                message = f"{action.capitalize()}: {target}"
+        elif not message:
+            # Last resort: use action as message
+            action = e.get('action', 'activity').replace('_', ' ')
+            message = action.capitalize()
 
         message_html, extracted_links = linkify_message(message)
         all_links = []
@@ -373,8 +389,16 @@ def process_activity(entries: list) -> list:
             if not any(l['url'] == link['url'] for l in all_links):
                 all_links.append(link)
 
-        # 7. Add project context for build/ship entries
-        project = details.get('project', '')
+        # 7. Add GitHub repo link from details.repo
+        if isinstance(details, dict) and details.get('repo'):
+            repo_url = details['repo']
+            if 'github.com' in repo_url and not any(l['url'] == repo_url for l in all_links):
+                # Extract repo name from URL
+                repo_name = repo_url.rstrip('/').split('/')[-1]
+                all_links.append({"label": f"🔗 {repo_name}", "url": repo_url})
+
+        # 8. Add project context for build/ship entries
+        project = details.get('project', '') if isinstance(details, dict) else ''
         if project and 'github' not in str(all_links).lower():
             # Check if it's a known project with GitHub
             known_projects = {
@@ -406,7 +430,9 @@ def read_all_activity() -> list:
                 entries.append(json.loads(line))
             except:
                 continue
-    return list(reversed(entries))
+    # Sort by timestamp descending (most recent first)
+    entries.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    return entries
 
 
 def get_activity_graph(activity: list = None) -> list:
