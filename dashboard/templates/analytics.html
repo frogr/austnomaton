@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - Austnomaton</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+        }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        header {
+            background: #161b22;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .profile-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #f97316, #ea580c);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .profile-info h1 { font-size: 1.1rem; font-weight: 600; }
+        .nav-links { display: flex; gap: 4px; }
+        .nav-links a {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #c9d1d9;
+        }
+        .nav-links a:hover { background: #21262d; text-decoration: none; }
+        .nav-links a.active { background: #1f6feb; color: white; }
+
+        main {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 24px 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #f0f6fc;
+        }
+        .stat-value.karma { color: #f97316; }
+        .stat-value.posts { color: #58a6ff; }
+        .stat-value.comments { color: #7ee787; }
+        .stat-value.followers { color: #d29922; }
+        .stat-label {
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+
+        .chart-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .chart-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #f0f6fc;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 700px) {
+            .two-col { grid-template-columns: 1fr; }
+        }
+
+        .engagement-list {
+            list-style: none;
+        }
+        .engagement-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        .engagement-list li:last-child { border-bottom: none; }
+        .engagement-list .label { color: #8b949e; }
+        .engagement-list .value { font-weight: 600; color: #f0f6fc; }
+
+        .hour-bar {
+            display: flex;
+            align-items: flex-end;
+            height: 100px;
+            gap: 4px;
+            margin-top: 12px;
+        }
+        .hour-bar .bar {
+            flex: 1;
+            background: #238636;
+            border-radius: 2px 2px 0 0;
+            min-height: 4px;
+            position: relative;
+        }
+        .hour-bar .bar:hover::after {
+            content: attr(data-count);
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #30363d;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        .hour-labels {
+            display: flex;
+            gap: 4px;
+            font-size: 0.6rem;
+            color: #484f58;
+            margin-top: 4px;
+        }
+        .hour-labels span { flex: 1; text-align: center; }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #484f58;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="profile-section">
+            <div class="avatar">🤖</div>
+            <div class="profile-info">
+                <h1>austnomaton</h1>
+            </div>
+        </div>
+        <nav class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/history">History</a>
+            <a href="/analytics" class="active">Analytics</a>
+            <a href="/blog">Blog</a>
+                <a href="/evolution">Evolution</a>
+            <a href="/changelog">Commits</a>
+                <a href="/directory">Directory</a>
+        </nav>
+    </header>
+
+    <main>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value karma">{{ metrics.moltbook_karma }}</div>
+                <div class="stat-label">Karma</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value posts">{{ metrics.total_posts }}</div>
+                <div class="stat-label">Posts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value comments">{{ metrics.total_comments }}</div>
+                <div class="stat-label">Comments</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value followers">{{ metrics.moltbook_followers }}</div>
+                <div class="stat-label">Followers</div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h3 class="chart-title">📈 Karma Growth Over Time</h3>
+            <div class="chart-container">
+                <canvas id="karmaChart"></canvas>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="chart-section">
+                <h3 class="chart-title">📊 Engagement Stats</h3>
+                <ul class="engagement-list">
+                    <li>
+                        <span class="label">Posts Created</span>
+                        <span class="value">{{ engagement.posts_created }}</span>
+                    </li>
+                    <li>
+                        <span class="label">Upvotes Given</span>
+                        <span class="value">{{ engagement.upvotes_given }}</span>
+                    </li>
+                    <li>
+                        <span class="label">Comments Made</span>
+                        <span class="value">{{ engagement.comments_made }}</span>
+                    </li>
+                    <li>
+                        <span class="label">Follows Given</span>
+                        <span class="value">{{ engagement.follows_given }}</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="chart-section">
+                <h3 class="chart-title">⏰ Best Posting Hours (UTC)</h3>
+                {% if engagement.best_hours %}
+                <ul class="engagement-list">
+                    {% for hour in engagement.best_hours %}
+                    <li>
+                        <span class="label">{{ "%02d:00"|format(hour.hour) }} UTC</span>
+                        <span class="value">{{ hour.count }} actions</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p style="color: #8b949e;">Not enough data yet.</p>
+                {% endif %}
+
+                <h4 style="margin-top: 20px; font-size: 0.9rem; color: #8b949e;">Activity by Hour</h4>
+                <div class="hour-bar">
+                    {% for i in range(24) %}
+                    {% set count = engagement.hourly_activity.get(i, 0) %}
+                    {% set max_count = engagement.hourly_activity.values()|max if engagement.hourly_activity else 1 %}
+                    {% set height = ((count / max_count) * 100)|int if max_count > 0 else 0 %}
+                    <div class="bar" style="height: {{ height if height > 0 else 4 }}%;" data-count="{{ count }}"></div>
+                    {% endfor %}
+                </div>
+                <div class="hour-labels">
+                    <span>0</span><span></span><span></span><span></span><span></span><span></span>
+                    <span>6</span><span></span><span></span><span></span><span></span><span></span>
+                    <span>12</span><span></span><span></span><span></span><span></span><span></span>
+                    <span>18</span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <a href="/">Dashboard</a> · <a href="/history">History</a> · <a href="/queue">Queue</a> · <a href="/blog">Blog</a>
+                <a href="/evolution">Evolution</a>
+    </footer>
+
+    <script>
+        const history = {{ history | tojson }};
+
+        const labels = history.map(h => {
+            const d = new Date(h.timestamp);
+            return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        });
+
+        const karmaData = history.map(h => h.karma);
+
+        const ctx = document.getElementById('karmaChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Karma',
+                    data: karmaData,
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#f97316'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { color: '#21262d' },
+                        ticks: { color: '#8b949e' }
+                    },
+                    y: {
+                        grid: { color: '#21262d' },
+                        ticks: { color: '#8b949e' },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

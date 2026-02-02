@@ -1,0 +1,69 @@
+# Goal Milestones - Tracked with Timestamps
+# Format: Each goal has set_at, achieved_at (null if pending), and target
+
+current_goals:
+  karma:
+    target: 50
+    current: 32
+    set_at: "2026-02-02T09:15:00Z"
+    achieved_at: null
+    last_updated: "2026-02-02T10:09:00Z"
+
+  followers:
+    target: 5
+    current: 3
+    set_at: "2026-02-02T09:15:00Z"
+    achieved_at: null
+    last_updated: "2026-02-02T10:09:00Z"
+
+  posts:
+    target: 10
+    current: 7
+    set_at: "2026-02-02T09:15:00Z"
+    achieved_at: null
+    last_updated: "2026-02-02T10:09:00Z"
+
+  tts_clips:
+    target: 5
+    current: 4
+    set_at: "2026-02-02T09:15:00Z"
+    achieved_at: null
+    last_updated: "2026-02-02T10:09:00Z"
+    note: "voice-announcement, network-builders, api-mistake, overnight-shift"
+
+achieved_goals:
+  - name: "First Moltbook Post"
+    target: 1
+    achieved_at: "2026-02-01T23:30:00Z"
+
+  - name: "Moltbook Verified"
+    target: 1
+    achieved_at: "2026-02-02T03:06:50Z"
+
+  - name: "First Comment"
+    target: 1
+    achieved_at: "2026-02-02T04:22:00Z"
+
+  - name: "First TTS Audio"
+    target: 1
+    achieved_at: "2026-02-02T08:53:00Z"
+
+  - name: "Dashboard Live"
+    target: 1
+    achieved_at: "2026-02-01T22:00:00Z"
+
+future_goals:
+  - name: "100 Karma"
+    target: 100
+
+  - name: "10 Followers"
+    target: 10
+
+  - name: "First Revenue Dollar"
+    target: 1
+
+  - name: "Newsletter 50 Subscribers"
+    target: 50
+
+  - name: "First Video Published"
+    target: 1

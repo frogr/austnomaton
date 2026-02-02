@@ -1103,6 +1103,78 @@ def api_queue():
     return jsonify(get_queue_items(full_content=False))
 
 
+def get_blog_posts() -> list:
+    """Read blog posts from content/blog directory."""
+    blog_dir = BASE_PATH / "content" / "blog"
+    posts = []
+    if not blog_dir.exists():
+        return posts
+
+    for f in sorted(blog_dir.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+        content = f.read_text()
+        title = f.stem.replace('-', ' ').title()
+        date = ""
+        author = "austnomaton"
+        tags = []
+        body = content
+
+        # Parse frontmatter
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                frontmatter = parts[1]
+                body = parts[2].strip()
+
+                match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', frontmatter, re.MULTILINE)
+                if match:
+                    title = match.group(1)
+                match = re.search(r'^date:\s*(\S+)', frontmatter, re.MULTILINE)
+                if match:
+                    date = match.group(1)
+                match = re.search(r'^author:\s*(\S+)', frontmatter, re.MULTILINE)
+                if match:
+                    author = match.group(1)
+                match = re.search(r'^tags:\s*\[(.+)\]', frontmatter, re.MULTILINE)
+                if match:
+                    tags = [t.strip().strip('"\'') for t in match.group(1).split(',')]
+
+        # Generate preview (first paragraph or first 300 chars)
+        preview_text = body.split('\n\n')[0] if '\n\n' in body else body[:300]
+        if HAS_MARKDOWN:
+            preview_html = markdown.markdown(preview_text)
+            content_html = markdown.markdown(body)
+        else:
+            preview_html = simple_markdown(preview_text)
+            content_html = simple_markdown(body)
+
+        posts.append({
+            'slug': f.stem,
+            'title': title,
+            'date': date,
+            'author': author,
+            'tags': tags,
+            'preview': preview_html,
+            'content_html': content_html
+        })
+
+    return posts
+
+
+@app.route("/blog")
+def blog():
+    posts = get_blog_posts()
+    return render_template("blog.html", posts=posts, post=None)
+
+
+@app.route("/blog/<slug>")
+def blog_post(slug):
+    posts = get_blog_posts()
+    post = next((p for p in posts if p['slug'] == slug), None)
+    if not post:
+        return "Post not found", 404
+    return render_template("blog.html", post=post, posts=None)
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("  Austnomaton Dashboard - http://localhost:8420")

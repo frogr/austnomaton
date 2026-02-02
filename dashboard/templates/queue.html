@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue - austnomaton</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            font-size: 13px;
+        }
+        a { color: #6ee7b7; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Header */
+        header {
+            background: #111;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #222;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .brand-links {
+            display: flex;
+            gap: 8px;
+        }
+        .brand-links a {
+            color: #666;
+            font-size: 11px;
+        }
+        .brand-links a:hover { color: #6ee7b7; }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        nav { display: flex; gap: 4px; }
+        nav a {
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: #888;
+            font-size: 12px;
+        }
+        nav a:hover { background: #1a1a1a; color: #fff; text-decoration: none; }
+        nav a.active { background: #22c55e; color: #000; font-weight: 500; }
+
+        /* Main */
+        main {
+            padding: 20px 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Page header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #222;
+        }
+        .page-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .page-subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .status-badge.can-post {
+            background: #14532d;
+            color: #6ee7b7;
+        }
+        .status-badge.rate-limited {
+            background: #713f12;
+            color: #fcd34d;
+        }
+
+        /* Queue items */
+        .queue-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .queue-item {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .queue-item.priority-high { border-left: 3px solid #ef4444; }
+        .queue-item.priority-normal { border-left: 3px solid #3b82f6; }
+        .queue-item.priority-low { border-left: 3px solid #6b7280; }
+
+        .queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 16px;
+            cursor: pointer;
+        }
+        .queue-header:hover { background: #151515; }
+
+        .queue-title-area {
+            flex: 1;
+        }
+        .queue-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+        .queue-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 11px;
+            color: #666;
+        }
+        .queue-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .queue-badges {
+            display: flex;
+            gap: 8px;
+        }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .badge.platform { background: #1e3a5f; color: #60a5fa; }
+        .badge.audio { background: #4c1d95; color: #c4b5fd; }
+        .badge.priority-high { background: #7f1d1d; color: #fca5a5; }
+        .badge.priority-low { background: #374151; color: #9ca3af; }
+        .badge.status-draft { background: #3f3f46; color: #a1a1aa; }
+        .badge.status-ready { background: #14532d; color: #6ee7b7; }
+
+        .queue-preview {
+            display: none;
+            padding: 16px;
+            border-top: 1px solid #222;
+            background: #0d0d0d;
+        }
+        .queue-preview.expanded { display: block; }
+
+        .preview-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #ccc;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .preview-content h1, .preview-content h2, .preview-content h3, .preview-content h4 {
+            color: #fff;
+            margin: 12px 0 8px 0;
+        }
+        .preview-content p { margin-bottom: 12px; }
+        .preview-content ul, .preview-content ol { margin-left: 20px; margin-bottom: 12px; }
+        .preview-content li { margin-bottom: 4px; }
+        .preview-content strong { color: #fff; }
+        .preview-content a { color: #6ee7b7; }
+
+        .preview-actions {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #222;
+            display: flex;
+            gap: 12px;
+        }
+        .preview-actions a, .preview-actions button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: #22c55e;
+            color: #000;
+            font-weight: 500;
+        }
+        .btn-secondary {
+            background: #333;
+            color: #fff;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .empty-state h2 {
+            font-size: 16px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        /* Audio player */
+        .audio-preview {
+            margin-top: 12px;
+            padding: 12px;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+        .audio-preview a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <h1>austnomaton</h1>
+            <div class="brand-links">
+                <a href="https://austn.net" target="_blank">austn.net</a>
+                <a href="https://moltbook.com/u/austnomaton" target="_blank">moltbook</a>
+            </div>
+        </div>
+        <div class="header-right">
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/history">History</a>
+                <a href="/queue" class="active">Queue</a>
+                <a href="/blog">Blog</a>
+                <a href="/evolution">Evolution</a>
+                <a href="/changelog">Commits</a>
+                <a href="/directory">Directory</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Content Queue</h1>
+                <p class="page-subtitle">{{ total }} post{{ 's' if total != 1 else '' }} waiting | Last post: {{ last_post_time }}</p>
+            </div>
+            {% if can_post %}
+            <span class="status-badge can-post">Ready to post</span>
+            {% else %}
+            <span class="status-badge rate-limited">Rate limited ({{ time_until_post }}m remaining)</span>
+            {% endif %}
+        </div>
+
+        {% if items %}
+        <div class="queue-list">
+            {% for item in items %}
+            <div class="queue-item priority-{{ item.priority }}">
+                <div class="queue-header" onclick="togglePreview('{{ item.filename }}')">
+                    <div class="queue-title-area">
+                        <div class="queue-title">{{ item.title }}</div>
+                        <div class="queue-meta">
+                            <span>{{ item.filename }}</span>
+                            {% if item.post_after %}
+                            <span>Post after: {{ item.post_after }}</span>
+                            {% endif %}
+                            <span>s/{{ item.submolt }}</span>
+                        </div>
+                    </div>
+                    <div class="queue-badges">
+                        <span class="badge platform">{{ item.platform }}</span>
+                        {% if item.has_audio %}
+                        <span class="badge audio">TTS</span>
+                        {% endif %}
+                        {% if item.priority == 'high' %}
+                        <span class="badge priority-high">high</span>
+                        {% elif item.priority == 'low' %}
+                        <span class="badge priority-low">low</span>
+                        {% endif %}
+                        <span class="badge status-{{ item.status }}">{{ item.status }}</span>
+                    </div>
+                </div>
+                <div class="queue-preview" id="preview-{{ item.filename }}">
+                    <div class="preview-content">
+                        {{ item.content_html|safe }}
+                    </div>
+                    {% if item.has_audio and item.audio_url %}
+                    <div class="audio-preview">
+                        <a href="{{ item.audio_url }}" target="_blank">
+                            <span>Listen to TTS audio</span>
+                        </a>
+                    </div>
+                    {% endif %}
+                    <div class="preview-actions">
+                        <a href="/queue/{{ item.filename }}" class="btn-secondary">View Raw</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>Queue Empty</h2>
+            <p>No posts waiting. Create new content in /queue/*.md</p>
+        </div>
+        {% endif %}
+    </main>
+
+    <script>
+        function togglePreview(filename) {
+            const el = document.getElementById('preview-' + filename);
+            el.classList.toggle('expanded');
+        }
+    </script>
+</body>
+</html>
