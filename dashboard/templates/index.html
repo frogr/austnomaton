@@ -285,6 +285,70 @@
             padding: 12px;
         }
 
+        /* Expandable activity content */
+        .activity-expand {
+            margin-top: 6px;
+        }
+        .expand-toggle {
+            background: none;
+            border: none;
+            color: #58a6ff;
+            cursor: pointer;
+            font-size: 0.7rem;
+            padding: 0;
+        }
+        .expand-toggle:hover {
+            text-decoration: underline;
+        }
+        .activity-details {
+            display: none;
+            background: #0d1117;
+            border-left: 2px solid #00ff88;
+            padding: 8px 10px;
+            margin-top: 6px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            color: #8b949e;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .activity-details.expanded {
+            display: block;
+        }
+
+        /* Goal progress bars */
+        .progress-item {
+            margin-bottom: 10px;
+        }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            margin-bottom: 4px;
+        }
+        .progress-label {
+            color: #c9d1d9;
+        }
+        .progress-value {
+            color: #8b949e;
+        }
+        .progress-bar {
+            background: #21262d;
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #238636, #3fb950);
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .progress-fill.complete {
+            background: linear-gradient(90deg, #1f6feb, #58a6ff);
+        }
+
         /* Responsive */
         @media (max-width: 800px) {
             .content-grid {
@@ -329,6 +393,7 @@
                 <a href="/" class="active">Dashboard</a>
                 <a href="/history">History</a>
                 <a href="/evolution">Evolution</a>
+                <a href="/changelog">Changelog</a>
             </nav>
         </div>
     </header>
@@ -359,6 +424,10 @@
             <div class="metric-card">
                 <div class="metric-value">{{ queue_count }}</div>
                 <div class="metric-label">Queued</div>
+            </div>
+            <div class="metric-card" style="border-color: {% if buttondown.status == 'active' %}#238636{% elif buttondown.status == 'review' %}#d29922{% else %}#30363d{% endif %};">
+                <div class="metric-value">{{ buttondown.subscribers }}</div>
+                <div class="metric-label">📧 Subs{% if buttondown.status == 'review' %} ⏳{% endif %}</div>
             </div>
         </div>
 
@@ -393,6 +462,12 @@
                             <a href="{{ link.url }}" target="_blank">{{ link.label }}</a>
                             {% endfor %}
                         </div>
+                        {% endif %}
+                        {% if event.details %}
+                        <div class="activity-expand">
+                            <button class="expand-toggle" onclick="toggleDetails(this)">Show details ▼</button>
+                        </div>
+                        <div class="activity-details">{{ event.details | tojson(indent=2) }}</div>
                         {% endif %}
                     </div>
                     {% else %}
@@ -431,6 +506,23 @@
                 </section>
 
                 <section class="panel">
+                    <h2>🎯 Progress</h2>
+                    {% for goal in goal_progress %}
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span class="progress-label">{{ goal.icon }} {{ goal.label }}</span>
+                            <span class="progress-value">{{ goal.current }}/{{ goal.target }}</span>
+                        </div>
+                        <div class="progress-bar">
+                            {% set pct = (goal.current / goal.target * 100) | int %}
+                            {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+                            <div class="progress-fill {% if pct >= 100 %}complete{% endif %}" style="width: {{ pct }}%;"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </section>
+
+                <section class="panel">
                     <h2>🌟 North Stars</h2>
                     <p class="focus-text">💰 Make money online<br>⭐ Get internet famous</p>
                 </section>
@@ -441,5 +533,18 @@
     <footer>
         {{ last_refresh }} · <a href="/history">History</a> · <a href="/evolution">Evolution Log</a> · <a href="/api/health">API</a>
     </footer>
+
+    <script>
+    function toggleDetails(btn) {
+        const details = btn.parentElement.nextElementSibling;
+        if (details.classList.contains('expanded')) {
+            details.classList.remove('expanded');
+            btn.textContent = 'Show details ▼';
+        } else {
+            details.classList.add('expanded');
+            btn.textContent = 'Hide details ▲';
+        }
+    }
+    </script>
 </body>
 </html>

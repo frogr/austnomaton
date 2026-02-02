@@ -6,6 +6,7 @@ Real-time monitoring for the autonomous agent system.
 
 import json
 import re
+import subprocess
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -322,6 +323,139 @@ def get_last_heartbeat_friendly() -> str:
     return "Active"
 
 
+def get_goal_progress(metrics: dict) -> list:
+    """Calculate progress toward milestones."""
+    return [
+        {
+            'label': 'Karma',
+            'current': metrics.get('moltbook_karma', 0),
+            'target': 50,
+            'icon': '⚡'
+        },
+        {
+            'label': 'Followers',
+            'current': metrics.get('moltbook_followers', 0),
+            'target': 10,
+            'icon': '👥'
+        },
+        {
+            'label': 'Posts',
+            'current': metrics.get('total_posts', 0),
+            'target': 10,
+            'icon': '📝'
+        },
+    ]
+
+
+def get_git_commits(limit: int = 50) -> list:
+    """Fetch git commit history."""
+    try:
+        result = subprocess.run(
+            ['git', 'log', f'-{limit}', '--pretty=format:%H|%h|%s|%an|%ai|%D'],
+            cwd=str(BASE_PATH),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            return []
+
+        commits = []
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('|')
+            if len(parts) >= 5:
+                commits.append({
+                    'hash': parts[0],
+                    'short_hash': parts[1],
+                    'message': parts[2],
+                    'author': parts[3],
+                    'date': parts[4][:10],
+                    'time': parts[4][11:16],
+                    'refs': parts[5] if len(parts) > 5 else ''
+                })
+        return commits
+    except Exception:
+        return []
+
+
+def get_git_diff_stats(commit_hash: str) -> dict:
+    """Get diff stats for a specific commit."""
+    try:
+        result = subprocess.run(
+            ['git', 'show', commit_hash, '--stat', '--format='],
+            cwd=str(BASE_PATH),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            return {'files': [], 'summary': ''}
+
+        lines = result.stdout.strip().split('\n')
+        files = []
+        summary = ''
+        for line in lines:
+            if ' | ' in line:
+                files.append(line.strip())
+            elif 'files changed' in line or 'file changed' in line:
+                summary = line.strip()
+
+        return {'files': files[:10], 'summary': summary}
+    except Exception:
+        return {'files': [], 'summary': ''}
+
+
+def fetch_buttondown_metrics() -> dict:
+    """Fetch newsletter metrics from Buttondown API."""
+    env_path = BASE_PATH / ".env"
+    api_key = None
+    if env_path.exists():
+        for line in env_path.read_text().split('\n'):
+            if line.startswith('BUTTONDOWN_API_KEY='):
+                api_key = line.split('=', 1)[1].strip()
+                break
+
+    default = {"subscribers": 0, "emails_sent": 0, "status": "not_configured"}
+    if not api_key:
+        return default
+
+    try:
+        # Get subscriber count
+        req = urllib.request.Request(
+            "https://api.buttondown.email/v1/subscribers",
+            headers={"Authorization": f"Token {api_key}"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            subscriber_count = data.get('count', 0)
+
+        # Get newsletter info
+        req2 = urllib.request.Request(
+            "https://api.buttondown.email/v1/newsletters",
+            headers={"Authorization": f"Token {api_key}"}
+        )
+        with urllib.request.urlopen(req2, timeout=5) as response:
+            data2 = json.loads(response.read().decode())
+            results = data2.get('results', [])
+            if results:
+                newsletter = results[0]
+                return {
+                    "subscribers": subscriber_count,
+                    "newsletter_name": newsletter.get('name', 'austnomaton'),
+                    "status": "active"
+                }
+
+        return {"subscribers": subscriber_count, "status": "active"}
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            return {"subscribers": 0, "status": "review", "error": "Account under review"}
+        return {"subscribers": 0, "status": "error", "error": str(e)}
+    except Exception as e:
+        return {"subscribers": 0, "status": "error", "error": str(e)}
+
+
 def get_evolution_entries() -> list:
     """Parse evolution log entries."""
     evo_path = BASE_PATH / "evolution" / "log.md"
@@ -374,9 +508,12 @@ def get_evolution_entries() -> list:
 @app.route("/")
 def index():
     queue = get_queue_items()
+    metrics = fetch_moltbook_metrics()
+    buttondown = fetch_buttondown_metrics()
     return render_template(
         "index.html",
-        metrics=fetch_moltbook_metrics(),
+        metrics=metrics,
+        buttondown=buttondown,
         activity=process_activity(read_all_activity()[:15]),
         activity_graph=get_activity_graph(),
         queue=queue,
@@ -384,7 +521,8 @@ def index():
         initiatives=get_initiatives(),
         current_focus=get_current_focus(),
         last_heartbeat_friendly=get_last_heartbeat_friendly(),
-        last_refresh=datetime.now().strftime("%H:%M:%S")
+        last_refresh=datetime.now().strftime("%H:%M:%S"),
+        goal_progress=get_goal_progress(metrics)
     )
 
 
@@ -416,6 +554,19 @@ def history():
 @app.route("/evolution")
 def evolution():
     return render_template("evolution.html", entries=get_evolution_entries())
+
+
+@app.route("/changelog")
+def changelog():
+    commits = get_git_commits(50)
+    return render_template("changelog.html", commits=commits)
+
+
+@app.route("/api/commit/<commit_hash>")
+def api_commit_diff(commit_hash):
+    """Get diff details for a specific commit."""
+    diff = get_git_diff_stats(commit_hash)
+    return jsonify(diff)
 
 
 @app.route("/api/activity")
