@@ -7,10 +7,87 @@ Real-time monitoring for the autonomous agent system.
 import json
 import re
 import subprocess
+import threading
+import time
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
+
+# =============================================================================
+# TTL Cache Infrastructure
+# =============================================================================
+_cache = {}
+_cache_lock = threading.Lock()
+
+
+def cache_get(key: str, ttl: int):
+    """Get cached value if not expired."""
+    with _cache_lock:
+        if key in _cache and time.time() - _cache[key]['time'] < ttl:
+            return _cache[key]['value']
+    return None
+
+
+def cache_set(key: str, value):
+    """Store value in cache with current timestamp."""
+    with _cache_lock:
+        _cache[key] = {'value': value, 'time': time.time()}
+
+
+def cache_stats() -> dict:
+    """Return cache statistics."""
+    with _cache_lock:
+        now = time.time()
+        stats = {}
+        for key, entry in _cache.items():
+            age = now - entry['time']
+            stats[key] = {
+                'age_seconds': round(age, 1),
+                'has_value': entry['value'] is not None
+            }
+        return stats
+
+
+# =============================================================================
+# Background Cache Refresh Thread
+# =============================================================================
+_refresh_thread = None
+_refresh_stop = threading.Event()
+
+
+def _background_refresh_loop():
+    """Background thread that refreshes API caches every 30s."""
+    while not _refresh_stop.wait(30):
+        try:
+            # Refresh Moltbook metrics
+            result = _fetch_moltbook_metrics_uncached()
+            cache_set('moltbook_metrics', result)
+        except Exception:
+            pass
+
+        try:
+            # Refresh Buttondown metrics
+            result = _fetch_buttondown_metrics_uncached()
+            cache_set('buttondown_metrics', result)
+        except Exception:
+            pass
+
+
+def start_background_refresh():
+    """Start the background cache refresh thread."""
+    global _refresh_thread
+    if _refresh_thread is None or not _refresh_thread.is_alive():
+        _refresh_stop.clear()
+        _refresh_thread = threading.Thread(target=_background_refresh_loop, daemon=True)
+        _refresh_thread.start()
+
+
+def stop_background_refresh():
+    """Stop the background cache refresh thread."""
+    _refresh_stop.set()
+    if _refresh_thread:
+        _refresh_thread.join(timeout=2)
 
 try:
     import yaml
@@ -332,9 +409,14 @@ def read_all_activity() -> list:
     return list(reversed(entries))
 
 
-def get_activity_graph() -> list:
-    """Generate last 7 days activity data."""
-    activity = read_all_activity()
+def get_activity_graph(activity: list = None) -> list:
+    """Generate last 7 days activity data.
+
+    Args:
+        activity: Pre-loaded activity list. If None, will read from file.
+    """
+    if activity is None:
+        activity = read_all_activity()
     days = []
     today = datetime.now().date()
 
@@ -363,7 +445,8 @@ def get_activity_graph() -> list:
     return days
 
 
-def fetch_moltbook_metrics() -> dict:
+def _fetch_moltbook_metrics_uncached() -> dict:
+    """Actually fetch metrics from Moltbook API (internal)."""
     api_key = get_api_key()
     default = {"moltbook_followers": 0, "moltbook_karma": 0, "total_posts": 0, "total_comments": 0, "following": 0}
     if not api_key:
@@ -389,7 +472,23 @@ def fetch_moltbook_metrics() -> dict:
     return default
 
 
+def fetch_moltbook_metrics() -> dict:
+    """Fetch Moltbook metrics with 60s TTL cache."""
+    cached = cache_get('moltbook_metrics', ttl=60)
+    if cached is not None:
+        return cached
+    result = _fetch_moltbook_metrics_uncached()
+    cache_set('moltbook_metrics', result)
+    return result
+
+
 def get_queue_items(full_content: bool = False) -> list:
+    # Cache only the non-full-content version (10s TTL)
+    if not full_content:
+        cached = cache_get('queue_items', ttl=10)
+        if cached is not None:
+            return cached
+
     queue_dir = BASE_PATH / "queue"
     items = []
     if queue_dir.exists():
@@ -463,10 +562,18 @@ def get_queue_items(full_content: bool = False) -> list:
                 else:
                     item["content_html"] = simple_markdown(body_content)
             items.append(item)
+
+    if not full_content:
+        cache_set('queue_items', items)
     return items
 
 
 def get_initiatives() -> list:
+    # Cache for 10s
+    cached = cache_get('initiatives', ttl=10)
+    if cached is not None:
+        return cached
+
     content = read_file("goals/initiatives.md")
     initiatives = []
     in_active = False
@@ -516,7 +623,9 @@ def get_initiatives() -> list:
             current['progress_pct'] = int(current['tasks_done'] / (current['tasks_done'] + current['tasks_todo']) * 100)
         initiatives.append(current)
 
-    return initiatives[:6]
+    result = initiatives[:6]
+    cache_set('initiatives', result)
+    return result
 
 
 def get_current_focus() -> str:
@@ -638,8 +747,45 @@ def get_git_commits(limit: int = 50) -> list:
         return []
 
 
+def _get_project_github_base_url(project_path: Path) -> str:
+    """Get GitHub base URL for a project (cached per project)."""
+    cache_key = f'github_url_{project_path.name}'
+    cached = cache_get(cache_key, ttl=120)
+    if cached is not None:
+        return cached
+
+    github_base = ""
+    try:
+        remote_result = subprocess.run(
+            ['git', 'remote', 'get-url', 'origin'],
+            cwd=str(project_path),
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if remote_result.returncode == 0:
+            remote = remote_result.stdout.strip()
+            if 'github.com' in remote:
+                # Convert git@github.com:user/repo.git to https://github.com/user/repo
+                if remote.startswith('git@'):
+                    remote = remote.replace('git@github.com:', 'https://github.com/').replace('.git', '')
+                elif remote.endswith('.git'):
+                    remote = remote[:-4]
+                github_base = remote
+    except Exception:
+        pass
+
+    cache_set(cache_key, github_base)
+    return github_base
+
+
 def get_all_project_commits(limit: int = 20) -> list:
     """Fetch recent commits from all project repos."""
+    # Check cache first (120s TTL)
+    cached = cache_get('all_project_commits', ttl=120)
+    if cached is not None:
+        return cached[:limit]
+
     projects_dir = BASE_PATH / "projects"
     all_commits = []
 
@@ -654,6 +800,9 @@ def get_all_project_commits(limit: int = 20) -> list:
             continue
 
         project_name = project_path.name
+        # Get GitHub base URL ONCE per project (not per commit)
+        github_base = _get_project_github_base_url(project_path)
+
         try:
             result = subprocess.run(
                 ['git', 'log', f'-{limit}', '--pretty=format:%H|%h|%s|%an|%ai'],
@@ -670,25 +819,7 @@ def get_all_project_commits(limit: int = 20) -> list:
                     continue
                 parts = line.split('|')
                 if len(parts) >= 5:
-                    # Get GitHub URL if remote exists
-                    remote_result = subprocess.run(
-                        ['git', 'remote', 'get-url', 'origin'],
-                        cwd=str(project_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=2
-                    )
-                    github_url = ""
-                    if remote_result.returncode == 0:
-                        remote = remote_result.stdout.strip()
-                        if 'github.com' in remote:
-                            # Convert git@github.com:user/repo.git to https://github.com/user/repo
-                            if remote.startswith('git@'):
-                                remote = remote.replace('git@github.com:', 'https://github.com/').replace('.git', '')
-                            elif remote.endswith('.git'):
-                                remote = remote[:-4]
-                            github_url = f"{remote}/commit/{parts[0]}"
-
+                    github_url = f"{github_base}/commit/{parts[0]}" if github_base else ""
                     all_commits.append({
                         'hash': parts[0],
                         'short_hash': parts[1],
@@ -705,6 +836,7 @@ def get_all_project_commits(limit: int = 20) -> list:
 
     # Sort by timestamp descending
     all_commits.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    cache_set('all_project_commits', all_commits)
     return all_commits[:limit]
 
 
@@ -735,8 +867,8 @@ def get_git_diff_stats(commit_hash: str) -> dict:
         return {'files': [], 'summary': ''}
 
 
-def fetch_buttondown_metrics() -> dict:
-    """Fetch newsletter metrics from Buttondown API."""
+def _fetch_buttondown_metrics_uncached() -> dict:
+    """Actually fetch metrics from Buttondown API (internal)."""
     env_path = BASE_PATH / ".env"
     api_key = None
     if env_path.exists():
@@ -782,6 +914,16 @@ def fetch_buttondown_metrics() -> dict:
         return {"subscribers": 0, "status": "error", "error": str(e)}
     except Exception as e:
         return {"subscribers": 0, "status": "error", "error": str(e)}
+
+
+def fetch_buttondown_metrics() -> dict:
+    """Fetch Buttondown metrics with 60s TTL cache."""
+    cached = cache_get('buttondown_metrics', ttl=60)
+    if cached is not None:
+        return cached
+    result = _fetch_buttondown_metrics_uncached()
+    cache_set('buttondown_metrics', result)
+    return result
 
 
 def get_metrics_history() -> list:
@@ -863,7 +1005,11 @@ def calculate_engagement_stats(activity: list) -> dict:
 
 
 def get_evolution_entries() -> list:
-    """Parse evolution log entries."""
+    """Parse evolution log entries (cached 10s)."""
+    cached = cache_get('evolution_entries', ttl=10)
+    if cached is not None:
+        return cached
+
     evo_path = BASE_PATH / "evolution" / "log.md"
     if not evo_path.exists():
         return []
@@ -908,6 +1054,7 @@ def get_evolution_entries() -> list:
             'content': html_content
         })
 
+    cache_set('evolution_entries', entries)
     return entries
 
 
@@ -917,12 +1064,14 @@ def index():
     metrics = fetch_moltbook_metrics()
     buttondown = fetch_buttondown_metrics()
     milestones = get_milestones()
+    # Read activity once and reuse (was being read twice before)
+    all_activity = read_all_activity()
     return render_template(
         "index.html",
         metrics=metrics,
         buttondown=buttondown,
-        activity=process_activity(read_all_activity()[:15]),
-        activity_graph=get_activity_graph(),
+        activity=process_activity(all_activity[:15]),
+        activity_graph=get_activity_graph(all_activity),
         queue=queue,
         queue_count=len(queue),
         initiatives=get_initiatives(),
@@ -1019,12 +1168,29 @@ def api_health():
     })
 
 
+@app.route("/api/cache/stats")
+def api_cache_stats():
+    """Return cache statistics for debugging."""
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "cache": cache_stats()
+    })
+
+
 def load_agent_directory() -> dict:
-    """Load agent directory data."""
+    """Load agent directory data (cached 10s)."""
+    cached = cache_get('agent_directory', ttl=10)
+    if cached is not None:
+        return cached
+
     agents_file = BASE_PATH / "tools" / "agent-directory" / "data" / "agents.json"
+    result = {"agents": {}, "last_updated": None}
     if agents_file.exists():
-        return json.loads(agents_file.read_text())
-    return {"agents": {}, "last_updated": None}
+        result = json.loads(agents_file.read_text())
+
+    cache_set('agent_directory', result)
+    return result
 
 
 @app.route("/directory")
@@ -1193,4 +1359,9 @@ if __name__ == "__main__":
     print("=" * 50)
     print("  Austnomaton Dashboard - http://localhost:8420")
     print("=" * 50)
-    app.run(host="localhost", port=8420, debug=False)
+    # Start background API cache refresh thread
+    start_background_refresh()
+    try:
+        app.run(host="localhost", port=8420, debug=False)
+    finally:
+        stop_background_refresh()
