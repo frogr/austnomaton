@@ -30,6 +30,7 @@ except ImportError:
 def simple_markdown(text):
     """Fallback markdown conversion when package not available."""
     import html
+    import re
     lines = text.strip().split('\n')
     result = []
     in_list = False
@@ -37,6 +38,19 @@ def simple_markdown(text):
 
     for line in lines:
         raw_line = line
+
+        # Handle images BEFORE escaping (![alt](url))
+        img_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+        if re.search(img_pattern, raw_line):
+            line = re.sub(img_pattern, r'<img src="\2" alt="\1" style="max-width:100%; border-radius:6px; margin:12px 0;">', raw_line)
+            result.append(line)
+            continue
+
+        # Handle horizontal rules
+        if raw_line.strip() in ['---', '***', '___']:
+            result.append('<hr>')
+            continue
+
         line = html.escape(line)
 
         # Close lists if line doesn't continue them

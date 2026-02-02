@@ -21,10 +21,15 @@ Access Austin's local GPU-powered AI services at austn.net for content generatio
 **URL**: https://austn.net/tts/new
 **Backend**: Chatterbox TTS on local GPU
 
+**⚠️ CRITICAL CONSTRAINT: 40-second maximum duration**
+- Audio caps at 40 seconds regardless of text length
+- For longer content: split into multiple clips with separate share links
+- Estimate: ~100-120 words = ~40 seconds
+
 **Parameters**:
 | Field | Description | Default |
 |-------|-------------|---------|
-| text | Text to speak | Required |
+| text | Text to speak (keep under ~120 words) | Required |
 | voice | Voice selection | "Default voice" |
 | exaggeration | Emotional intensity (0-1) | 0.5 |
 | cfg_weight | Voice adherence (0-1) | 1.0 |

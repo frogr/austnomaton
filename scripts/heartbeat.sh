@@ -1,99 +1,181 @@
 #!/bin/bash
-# Austnomaton Heartbeat Script
-# Runs every 30 minutes - be ACTIVE, ENGAGED, KIND
+# Austnomaton Heartbeat Script v3.1
+# Runs every 5 minutes - BUILD CONSTANTLY, post every 30min
+# v3.1: Replaced gtimeout with pure bash (fixes Gatekeeper prompts)
+
+set -o pipefail
 
 AUSTN_HOME="$HOME/.austnomaton"
 LOG_FILE="$AUSTN_HOME/logs/heartbeat.log"
 LOCK_FILE="$AUSTN_HOME/.heartbeat.lock"
+LAST_POST_FILE="$AUSTN_HOME/.last_post_time"
 QUEUE_DIR="$AUSTN_HOME/queue"
-CLAUDE_BIN="$HOME/.local/bin/claude"
+CLAUDE_BIN="$HOME/Applications/ClaudeCLI.app/Contents/MacOS/claude-wrapper"
 
-mkdir -p "$AUSTN_HOME/logs" "$QUEUE_DIR/posted"
+# Timeouts
+CLAUDE_TIMEOUT=600      # 10 minutes max (faster cycles now)
+LOCK_STALE_THRESHOLD=900  # 15 minutes = stale lock
+POST_INTERVAL=1800      # 30 minutes between Moltbook posts
 
-# Only one instance at a time
+mkdir -p "$AUSTN_HOME/logs" "$QUEUE_DIR/archive"
+
+log() {
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $1" >> "$LOG_FILE"
+}
+
+cleanup() {
+    rm -f "$LOCK_FILE"
+}
+
+# Check if we can post (30 min since last post)
+can_post_to_moltbook() {
+    if [ ! -f "$LAST_POST_FILE" ]; then
+        return 0  # No record = can post
+    fi
+    local last_post=$(cat "$LAST_POST_FILE")
+    local now=$(date +%s)
+    local elapsed=$((now - last_post))
+    if [ "$elapsed" -ge "$POST_INTERVAL" ]; then
+        return 0  # Can post
+    fi
+    return 1  # Too soon
+}
+
+mark_posted() {
+    date +%s > "$LAST_POST_FILE"
+}
+
+# Kill zombies
+kill_zombies() {
+    pgrep -f "claude.*dangerously-skip-permissions" 2>/dev/null | xargs kill -9 2>/dev/null || true
+}
+
+# Check stale lock
+is_lock_stale() {
+    [ ! -f "$LOCK_FILE" ] && return 1
+    local lock_age
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        lock_age=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE") ))
+    else
+        lock_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE") ))
+    fi
+    [ "$lock_age" -gt "$LOCK_STALE_THRESHOLD" ]
+}
+
+# Handle lock
 if [ -f "$LOCK_FILE" ]; then
     PID=$(cat "$LOCK_FILE" 2>/dev/null)
-    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) Heartbeat already running (PID $PID)" >> "$LOG_FILE"
+    if is_lock_stale; then
+        log "STALE LOCK - forcing cleanup"
+        [ -n "$PID" ] && kill -9 "$PID" 2>/dev/null
+        kill_zombies
+        rm -f "$LOCK_FILE"
+    elif [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        log "Already running (PID $PID) - skip"
         exit 0
+    else
+        rm -f "$LOCK_FILE"
     fi
 fi
+
 echo $$ > "$LOCK_FILE"
-trap "rm -f $LOCK_FILE" EXIT
+trap cleanup EXIT
+
+# Check post eligibility
+if can_post_to_moltbook; then
+    CAN_POST="yes"
+else
+    CAN_POST="no"
+fi
 
 QUEUED=$(ls "$QUEUE_DIR"/*.md 2>/dev/null | grep -v README | wc -l | tr -d ' ')
 
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) === HEARTBEAT START === (Queue: $QUEUED)" >> "$LOG_FILE"
+log "=== HEARTBEAT (Queue: $QUEUED, CanPost: $CAN_POST) ==="
 
-# Load env
 [ -f "$AUSTN_HOME/.env" ] && { set -a; source "$AUSTN_HOME/.env"; set +a; }
 
-read -r -d '' PROMPT << 'ENDPROMPT'
-You are austnomaton running your 30-minute heartbeat. Be ACTIVE, ENGAGED, KIND.
+[ ! -x "$CLAUDE_BIN" ] && { log "ERROR: Claude not found"; exit 1; }
 
-## WORKING APIs
-- POST /posts/{id}/upvote - Upvote good content
-- POST /agents/{name}/follow - Follow interesting agents
-- POST /posts - Post from queue
-- POST /posts/{id}/comments - Comment on posts
-- All GET endpoints work
+read -r -d '' PROMPT << ENDPROMPT
+You are austnomaton. 5-minute heartbeat. BUILD THINGS.
 
-## PRIORITY TASKS:
+## Context
+- Can post to Moltbook: $CAN_POST (30min rate limit)
+- Queue: $QUEUED posts ready
+- Timeout: 10 minutes
 
-### 1. ENGAGE WITH COMMUNITY
-- GET /posts?limit=20&sort=new to see recent posts
-- Upvote 3-5 quality posts (interesting, thoughtful, not spam)
-- Comment on 1-2 posts if you have something genuine to add
-- Follow 1-2 new agents whose content you like
+## Moltbook CLI (USE THIS!)
+\`molt\` is installed. Use it instead of raw API calls:
+\`\`\`bash
+molt me                    # Check stats
+molt feed -n 5             # Read feed
+molt post "title" "body" s/self   # Post to submolt
+molt upvote <post_id>      # Upvote
+molt comment <post_id> "text"     # Comment
+molt trending              # See hot posts
+\`\`\`
+Export MOLTBOOK_API_KEY from .env first.
 
-### 2. POST FROM QUEUE
-- Check queue/*.md for posts
-- POST to /posts with {submolt, title, content}
-- Move posted file to queue/posted/ with timestamp
+## Priority Order
 
-### 3. UPDATE STATE
-- Update memory/context.md briefly
-- Log to logs/activity.jsonl
+### 1. BUILD (~60%)
+Read projects/ACTIVE.md. What's the current project?
+- Write code
+- Test it
+- Commit and push
+- Move to next task
 
-## LOGGING FORMAT (IMPORTANT!)
-Every log entry MUST have this structure for the dashboard:
-{
-  "timestamp": "ISO timestamp",
-  "event": "event_type",
-  "action": "action_name",
-  "status": "success|failed|rate_limited",
-  "details": {
-    "message": "Human readable description",
-    "post_id": "uuid-if-applicable",
-    "user": "username-if-applicable",
-    "links": [{"label": "Link Text", "url": "https://..."}]
-  }
-}
+### 2. POST (~20%) - ONLY IF CAN_POST=$CAN_POST
+If $CAN_POST=yes and queue has posts:
+- Use \`molt post "title" "content" s/submolt\`
+- Move to queue/archive/
+- After posting, run: date +%s > ~/.austnomaton/.last_post_time
 
-Examples:
-- When you upvote: include post_id so dashboard links to the post
-- When you follow: include user so dashboard links to their profile
-- When you post: include post_id of your new post
-- When you comment: include post_id of the post you commented on
+### 3. ENGAGE (~10%) - Light touch
+Use \`molt upvote\` and \`molt comment\`. Don't burn time on failures.
 
-## AUTH
-Header: Authorization: Bearer $MOLTBOOK_API_KEY
-Base: https://www.moltbook.com/api/v1
-Post URLs: https://moltbook.com/post/{id}
-User URLs: https://moltbook.com/u/{username}
+### 4. LOG (~10%)
+Update evolution/log.md if you shipped something.
+Log to logs/activity.jsonl.
 
-## MINDSET
-- Be genuine - only engage with content you find valuable
-- Build real relationships through consistent engagement
-- Quality over quantity but DO engage every heartbeat
+## Rules
+- 10 min timeout - be fast
+- Ship > perfect
+- If stuck, move on
+- Build real things
 
-Complete in 5 minutes max. Act autonomously.
+GO.
 ENDPROMPT
 
-cd "$AUSTN_HOME"
+log "--- Claude ---"
 
-echo "--- Claude Output ---" >> "$LOG_FILE"
-"$CLAUDE_BIN" --dangerously-skip-permissions -p "$PROMPT" >> "$LOG_FILE" 2>&1
-echo "--- End (exit: $?) ---" >> "$LOG_FILE"
+# Pure bash timeout (no gtimeout = no Gatekeeper prompts)
+"$CLAUDE_BIN" --dangerously-skip-permissions -p "$PROMPT" >> "$LOG_FILE" 2>&1 &
+CLAUDE_PID=$!
 
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) === HEARTBEAT END ===" >> "$LOG_FILE"
+# Watchdog kills claude if it runs too long
+(
+    sleep "$CLAUDE_TIMEOUT"
+    kill -9 "$CLAUDE_PID" 2>/dev/null
+) &
+WATCHDOG_PID=$!
+
+# Wait for claude to finish
+wait "$CLAUDE_PID" 2>/dev/null
+CLAUDE_EXIT=$?
+
+# Clean up watchdog
+kill "$WATCHDOG_PID" 2>/dev/null 2>&1
+wait "$WATCHDOG_PID" 2>/dev/null 2>&1
+
+if [ "$CLAUDE_EXIT" -eq 0 ]; then
+    log "--- OK ---"
+elif [ "$CLAUDE_EXIT" -eq 137 ]; then
+    log "--- TIMEOUT (killed) ---"
+    pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null
+else
+    log "--- ERROR $CLAUDE_EXIT ---"
+    pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null
+fi
+
+log "=== END ==="
