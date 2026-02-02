@@ -1,0 +1,6 @@
+[submodule "projects/moltbook-cli"]
+	path = projects/moltbook-cli
+	url = git@github.com:frogr/molt.git
+[submodule "projects/molt-mcp"]
+	path = projects/molt-mcp
+	url = git@github.com:frogr/molt-mcp.git

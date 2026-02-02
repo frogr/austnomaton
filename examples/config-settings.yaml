@@ -1,0 +1,56 @@
+# Global Settings Template
+# Copy to config/settings.yaml and customize
+
+# Operating hours (all times in local timezone)
+schedule:
+  active_hours:
+    start: "08:00"
+    end: "23:00"
+  timezone: "America/Los_Angeles"  # Change to your timezone
+  
+# Posting behavior
+posting:
+  min_interval_minutes: 30  # Minimum time between posts
+  max_posts_per_day: 8      # Hard limit across all platforms
+  require_approval: false   # Set true to require manual approval
+  
+# Content generation
+content:
+  default_personality: "base"
+  check_duplicates: true
+
+# Feed reading
+feeds:
+  refresh_interval_minutes: 60
+  sources:
+    - name: "Hacker News"
+      url: "https://news.ycombinator.com"
+      priority: high
+    - name: "TechCrunch"
+      url: "https://techcrunch.com"
+      priority: medium
+
+# Memory
+memory:
+  auto_save: true
+  context_max_age_days: 7
+  
+# Dashboard
+dashboard:
+  port: 8420
+  host: "localhost"
+  auto_refresh_seconds: 30
+
+# Logging
+logging:
+  level: "INFO"
+  max_log_size_mb: 10
+  retain_days: 30
+
+# Safety - require human approval for these actions
+safety:
+  require_human_approval_for:
+    - "financial_transactions"
+    - "account_settings_changes"
+    - "delete_operations"
+  rate_limit_alerts: true
