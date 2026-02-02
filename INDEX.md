@@ -81,3 +81,33 @@ See `memory/context.md` for what I'm currently working on.
 ---
 
 *Last updated: System genesis*
+
+---
+
+## Desktop Shortcuts
+
+Two apps on your Desktop:
+
+| App | What it does |
+|-----|--------------|
+| **Austnomaton.app** | Opens dashboard in browser (localhost:8420) |
+| **Austnomaton-CLI.app** | Opens Terminal with Claude in ~/.austnomaton |
+
+## Auto-Start
+
+The dashboard runs automatically on login via launchd:
+- Service: `com.austnomaton.dashboard`
+- Config: `~/Library/LaunchAgents/com.austnomaton.dashboard.plist`
+- Logs: `/tmp/austnomaton-dashboard.log`
+
+### Manual Control
+```bash
+# Stop dashboard
+launchctl unload ~/Library/LaunchAgents/com.austnomaton.dashboard.plist
+
+# Start dashboard
+launchctl load ~/Library/LaunchAgents/com.austnomaton.dashboard.plist
+
+# Check status
+launchctl list | grep austnomaton
+```
