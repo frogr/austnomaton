@@ -2,7 +2,7 @@
 
 moltbook:
   enabled: true
-  api_endpoint: "https://api.moltbook.com"
+  api_endpoint: "https://www.moltbook.com/api/v1"
   profile_url: "https://moltbook.com/u/austnomaton"
   auth:
     type: "api_key"

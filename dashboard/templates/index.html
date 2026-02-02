@@ -5,117 +5,441 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="30">
     <title>Austnomaton Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Header */
+        header {
+            background: #161b22;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .profile-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #f97316, #ea580c);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .profile-info h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .profile-links {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .profile-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #c9d1d9;
+            white-space: nowrap;
+        }
+        .profile-links a:hover { background: #30363d; text-decoration: none; }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #3fb950;
+            flex-shrink: 0;
+        }
+        .nav-links { display: flex; gap: 4px; }
+        .nav-links a {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #c9d1d9;
+        }
+        .nav-links a:hover { background: #21262d; text-decoration: none; }
+        .nav-links a.active { background: #1f6feb; color: white; }
+
+        /* Main - single scroll */
+        main {
+            padding: 16px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Metrics row */
+        .metrics-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .metric-card {
+            flex: 1;
+            min-width: 80px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px 8px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #58a6ff;
+        }
+        .metric-label {
+            font-size: 0.65rem;
+            color: #8b949e;
+            margin-top: 2px;
+        }
+
+        /* Graph section */
+        .graph-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+        .graph-title {
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 60px;
+        }
+        .bar {
+            flex: 1;
+            background: linear-gradient(to top, #238636, #3fb950);
+            border-radius: 2px 2px 0 0;
+            min-width: 20px;
+            position: relative;
+        }
+        .bar:hover { opacity: 0.8; }
+        .bar-label {
+            position: absolute;
+            bottom: -16px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.6rem;
+            color: #8b949e;
+        }
+
+        /* Two column layout */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 16px;
+        }
+
+        /* Panels */
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .panel h2 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #8b949e;
+            margin-bottom: 10px;
+        }
+
+        /* Activity - NO nested scroll */
+        .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .activity-item {
+            padding: 10px;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            border-left: 3px solid #30363d;
+        }
+        .activity-item.success { border-left-color: #3fb950; }
+        .activity-item.failed { border-left-color: #f85149; }
+        .activity-item.blocked, .activity-item.rate_limited { border-left-color: #d29922; }
+        .activity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            gap: 8px;
+        }
+        .activity-time { font-size: 0.7rem; color: #8b949e; }
+        .activity-badge {
+            font-size: 0.65rem;
+            padding: 2px 5px;
+            background: #21262d;
+            border-radius: 3px;
+            color: #8b949e;
+        }
+        .activity-message {
+            font-size: 0.85rem;
+            line-height: 1.4;
+            color: #c9d1d9;
+            word-break: break-word;
+        }
+        .activity-message a { color: #58a6ff; }
+        .activity-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .activity-links a {
+            font-size: 0.7rem;
+            padding: 3px 6px;
+            background: #21262d;
+            border-radius: 3px;
+            color: #58a6ff;
+        }
+        .activity-links a:hover { background: #30363d; text-decoration: none; }
+
+        /* Sidebar */
+        .sidebar { display: flex; flex-direction: column; gap: 12px; }
+
+        .sidebar-item {
+            padding: 8px;
+            background: #0d1117;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            border: 1px solid #21262d;
+        }
+        .sidebar-item-title {
+            font-weight: 500;
+            color: #c9d1d9;
+            margin-bottom: 2px;
+        }
+        .sidebar-item-meta {
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+        .sidebar-item-meta.active { color: #3fb950; }
+        .sidebar-item-meta.planning { color: #d29922; }
+
+        .focus-text {
+            font-size: 0.8rem;
+            color: #8b949e;
+            line-height: 1.4;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 12px;
+            color: #484f58;
+            font-size: 0.75rem;
+            border-top: 1px solid #21262d;
+            margin-top: 16px;
+        }
+
+        .empty-state {
+            color: #484f58;
+            font-size: 0.8rem;
+            text-align: center;
+            padding: 12px;
+        }
+
+        /* Responsive */
+        @media (max-width: 800px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 500px) {
+            header { padding: 10px 12px; }
+            main { padding: 12px; }
+            .metric-card { padding: 8px 4px; }
+            .metric-value { font-size: 1.2rem; }
+            .sidebar { grid-template-columns: 1fr; }
+            .profile-info h1 { font-size: 1rem; }
+        }
+    </style>
 </head>
 <body>
     <header>
-        <h1>🤖 Austnomaton</h1>
-        <p class="subtitle">Autonomous Digital Twin Dashboard</p>
-        <p class="refresh-time">Last refresh: {{ last_refresh }}</p>
+        <div class="profile-section">
+            <div class="avatar">🤖</div>
+            <div class="profile-info">
+                <h1>austnomaton</h1>
+                <div class="profile-links">
+                    <a href="https://moltbook.com/u/austnomaton" target="_blank">🦞 Moltbook</a>
+                    <a href="https://x.com/austnnet" target="_blank">𝕏 Twitter</a>
+                    <a href="https://austn.net" target="_blank">🌐 Web</a>
+                </div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="system-status">
+                <div class="status-dot"></div>
+                <span>{{ last_heartbeat_friendly }}</span>
+            </div>
+            <nav class="nav-links">
+                <a href="/" class="active">Dashboard</a>
+                <a href="/history">History</a>
+                <a href="/evolution">Evolution</a>
+            </nav>
+        </div>
     </header>
 
     <main>
-        <!-- Metrics Panel -->
-        <section class="panel metrics-panel">
-            <h2>📊 Metrics</h2>
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <span class="metric-value">{{ metrics.moltbook_followers }}</span>
-                    <span class="metric-label">Moltbook Followers</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value">{{ metrics.x_followers }}</span>
-                    <span class="metric-label">X Followers</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value">{{ metrics.total_posts }}</span>
-                    <span class="metric-label">Total Posts</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value">${{ metrics.revenue_mtd }}</span>
-                    <span class="metric-label">Revenue MTD</span>
-                </div>
+        <!-- Metrics -->
+        <div class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-value">{{ metrics.moltbook_karma }}</div>
+                <div class="metric-label">Karma</div>
             </div>
-        </section>
+            <div class="metric-card">
+                <div class="metric-value">{{ metrics.moltbook_followers }}</div>
+                <div class="metric-label">Followers</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ metrics.following }}</div>
+                <div class="metric-label">Following</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ metrics.total_posts }}</div>
+                <div class="metric-label">Posts</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ metrics.total_comments }}</div>
+                <div class="metric-label">Comments</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ queue_count }}</div>
+                <div class="metric-label">Queued</div>
+            </div>
+        </div>
 
-        <!-- Activity Feed -->
-        <section class="panel activity-panel">
-            <h2>📝 Activity Feed</h2>
-            <div class="activity-list">
-                {% for event in activity %}
-                <div class="activity-item {{ event.status }}">
-                    <span class="activity-time">{{ event.timestamp }}</span>
-                    <span class="activity-action">{{ event.action }}</span>
-                    <span class="activity-detail">{{ event.details.message if event.details else '' }}</span>
+        <!-- Activity Graph -->
+        <div class="graph-section">
+            <div class="graph-title">📊 Activity (Last 7 Days)</div>
+            <div class="bar-chart">
+                {% for day in activity_graph %}
+                <div class="bar" style="height: {{ day.height }}%;" title="{{ day.label }}: {{ day.count }} actions">
+                    <span class="bar-label">{{ day.short }}</span>
                 </div>
-                {% else %}
-                <p class="empty-state">No activity yet. Run austnomaton to get started!</p>
                 {% endfor %}
             </div>
-        </section>
+        </div>
 
-        <!-- Context Panel -->
-        <section class="panel context-panel">
-            <h2>🧠 Current Context</h2>
-            <div class="context-content">
-                <pre>{{ context.raw[:1500] }}{% if context.raw|length > 1500 %}...{% endif %}</pre>
-            </div>
-        </section>
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Activity Feed -->
+            <section class="panel">
+                <h2>📝 Recent Activity</h2>
+                <div class="activity-list">
+                    {% for event in activity %}
+                    <div class="activity-item {{ event.status }}">
+                        <div class="activity-header">
+                            <span class="activity-time">{{ event.timestamp_friendly }}</span>
+                            <span class="activity-badge">{{ event.action }}</span>
+                        </div>
+                        <div class="activity-message">{{ event.message_html | safe }}</div>
+                        {% if event.all_links %}
+                        <div class="activity-links">
+                            {% for link in event.all_links %}
+                            <a href="{{ link.url }}" target="_blank">{{ link.label }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="empty-state">No activity yet</p>
+                    {% endfor %}
+                </div>
+            </section>
 
-        <!-- Tasks Panel -->
-        <section class="panel tasks-panel">
-            <h2>✅ Active Tasks</h2>
-            <div class="tasks-list">
-                {% for task in tasks %}
-                <div class="task-item {{ task.status }}">
-                    <span class="task-status">{% if task.status == 'done' %}✓{% else %}○{% endif %}</span>
-                    <span class="task-title">{{ task.title }}</span>
-                </div>
-                {% else %}
-                <p class="empty-state">No active tasks</p>
-                {% endfor %}
-            </div>
-        </section>
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <section class="panel">
+                    <h2>📋 Queue</h2>
+                    {% for item in queue %}
+                    <div class="sidebar-item">
+                        <div class="sidebar-item-title">{{ item.title[:40] }}{% if item.title|length > 40 %}...{% endif %}</div>
+                        <div class="sidebar-item-meta">{{ item.priority }}</div>
+                    </div>
+                    {% else %}
+                    <p class="empty-state">Queue empty</p>
+                    {% endfor %}
+                </section>
 
-        <!-- Recent Posts -->
-        <section class="panel posts-panel">
-            <h2>📮 Recent Posts</h2>
-            <div class="posts-list">
-                {% for post in recent_posts %}
-                <div class="post-item">
-                    <span class="post-platform">{{ post.platform }}</span>
-                    <span class="post-content">{{ post.content[:100] }}</span>
-                    <span class="post-time">{{ post.time }}</span>
-                </div>
-                {% else %}
-                <p class="empty-state">No posts yet. Use /poster to publish content!</p>
-                {% endfor %}
-            </div>
-        </section>
+                <section class="panel">
+                    <h2>🎯 Initiatives</h2>
+                    {% for i in initiatives %}
+                    <div class="sidebar-item">
+                        <div class="sidebar-item-title">{{ i.name }}</div>
+                        <div class="sidebar-item-meta {{ i.status }}">{{ i.status }}</div>
+                    </div>
+                    {% endfor %}
+                </section>
 
-        <!-- North Stars -->
-        <section class="panel goals-panel">
-            <h2>🌟 North Stars</h2>
-            <div class="goals-list">
-                <div class="goal-item">
-                    <span class="goal-icon">💰</span>
-                    <span class="goal-text">Make money on the internet</span>
-                </div>
-                <div class="goal-item">
-                    <span class="goal-icon">🌟</span>
-                    <span class="goal-text">Become famous on the internet</span>
-                </div>
+                <section class="panel">
+                    <h2>🧠 Focus</h2>
+                    <p class="focus-text">{{ current_focus }}</p>
+                </section>
+
+                <section class="panel">
+                    <h2>🌟 North Stars</h2>
+                    <p class="focus-text">💰 Make money online<br>⭐ Get internet famous</p>
+                </section>
             </div>
-        </section>
+        </div>
     </main>
 
     <footer>
-        <p>Austnomaton v1.0.0 | Dashboard auto-refreshes every 30 seconds</p>
-        <p>
-            <a href="/api/activity">Activity API</a> |
-            <a href="/api/metrics">Metrics API</a> |
-            <a href="/api/context">Context API</a>
-        </p>
+        {{ last_refresh }} · <a href="/history">History</a> · <a href="/evolution">Evolution Log</a> · <a href="/api/health">API</a>
     </footer>
 </body>
 </html>
